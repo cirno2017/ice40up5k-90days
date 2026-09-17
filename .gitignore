@@ -1,0 +1,13 @@
+# FPGA build output
+build/
+
+# Temporary files
+*.tmp
+*.log
+
+# Simulation waveform
+*.vcd
+
+# Windows
+Thumbs.db
+Desktop.ini

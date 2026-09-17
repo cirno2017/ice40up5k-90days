@@ -1,0 +1,19 @@
+{
+    "files.associations": {
+        "*.v": "verilog",
+        "*.vh": "verilog",
+        "*.sv": "systemverilog",
+        "*.svh": "systemverilog",
+        "*.pcf": "plaintext"
+    },
+    "verilog.linting.linter": "iverilog",
+    "verilog.linting.iverilog.arguments": "-g2012 -Wall",
+    "editor.formatOnSave": false,
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4,
+    "[makefile]": {
+        "editor.insertSpaces": false
+    },
+    "verilog.formatting.verilogHDL.formatter": "verible-verilog-format",
+    "verilog.formatting.systemVerilog.formatter": "verible-verilog-format"
+}

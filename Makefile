@@ -1,73 +1,180 @@
-SHELL := cmd.exe
+# ============================================================
+# iCESugar iCE40UP5K Makefile
+# ============================================================
 
-.DEFAULT_GOAL := all
+TOP      := top
+DEVICE   := up5k
+PACKAGE  := sg48
+FREQ     := 12
 
-TOP        := top
-
-RTL_DIR    := rtl
-SIM_DIR    := sim
+RTL_DIR  := rtl
 CONSTR_DIR := constraints
-BUILD_DIR  := build
+BUILD_DIR := build
 
-RTL        := $(RTL_DIR)/$(TOP).v
-TB         := $(SIM_DIR)/$(TOP)_tb.v
-PCF        := $(CONSTR_DIR)/icesugar.pcf
+PCF      := $(CONSTR_DIR)/icesugar.pcf
 
-JSON       := $(BUILD_DIR)/$(TOP).json
-ASC        := $(BUILD_DIR)/$(TOP).asc
-BIN        := $(BUILD_DIR)/$(TOP).bin
+# 自动收集 rtl/ 目录下所有 .v 文件
+RTL      := $(wildcard $(RTL_DIR)/*.v)
 
-SIMV       := $(BUILD_DIR)/$(TOP)_tb.vvp
-VCD        := $(BUILD_DIR)/$(TOP)_tb.vcd
+JSON     := $(BUILD_DIR)/$(TOP).json
+ASC      := $(BUILD_DIR)/$(TOP).asc
+BIN      := $(BUILD_DIR)/$(TOP).bin
 
-DEVICE     := up5k
-PACKAGE    := sg48
-FREQ       := 12
+SIM_TOP  := top_tb
+TB       := sim/top_tb.v
+VVP      := $(BUILD_DIR)/$(SIM_TOP).vvp
+VCD      := $(BUILD_DIR)/top_tb.vcd
 
-.PHONY: all synth pnr pack prog sim wave clean help
+# ============================================================
+# Verilator
+# ============================================================
 
+VERILATOR_DIR := $(BUILD_DIR)/verilator
+VERILATOR_CPP := $(abspath sim/verilator_main.cpp)
+VERILATOR_BIN := $(VERILATOR_DIR)/V$(TOP)
+VERILATOR_VCD := wave.vcd
+
+RTL_ABS := $(abspath $(RTL))
+
+
+# ============================================================
+# Default target
+# ============================================================
+
+.PHONY: all
 all: $(BIN)
 
+
+# ============================================================
+# Create build directory
+# ============================================================
+
 $(BUILD_DIR):
-	@if not exist "$(BUILD_DIR)" mkdir "$(BUILD_DIR)"
+	mkdir -p $(BUILD_DIR)
+
+
+# ============================================================
+# Synthesis: Verilog -> JSON
+# ============================================================
 
 $(JSON): $(RTL) | $(BUILD_DIR)
-	yosys -p "synth_ice40 -top $(TOP) -json $(JSON)" $(RTL)
+	yosys -p "read_verilog $(RTL); synth_ice40 -top $(TOP) -json $(JSON)"
+
+
+# ============================================================
+# Place & Route: JSON -> ASC
+# ============================================================
 
 $(ASC): $(JSON) $(PCF)
-	nextpnr-ice40 --$(DEVICE) --package $(PACKAGE) --json $(JSON) --pcf $(PCF) --asc $(ASC) --freq $(FREQ)
+	nextpnr-ice40 \
+		--$(DEVICE) \
+		--package $(PACKAGE) \
+		--json $(JSON) \
+		--pcf $(PCF) \
+		--asc $(ASC) \
+		--freq $(FREQ)
+
+
+# ============================================================
+# Bitstream: ASC -> BIN
+# ============================================================
 
 $(BIN): $(ASC)
 	icepack $(ASC) $(BIN)
 
-synth: $(JSON)
 
-pnr: $(ASC)
+# ============================================================
+# Program FPGA Flash
+# ============================================================
 
-pack: $(BIN)
-
+.PHONY: prog
 prog: $(BIN)
-	copy /Y build\top.bin E:\
+	icesprog $(BIN)
 
-$(SIMV): $(RTL) $(TB) | $(BUILD_DIR)
-	iverilog -g2012 -Wall -s $(TOP)_tb -o $(SIMV) $(TB) $(RTL)
 
-sim: $(SIMV)
-	vvp $(SIMV)
+# ============================================================
+# Clean build files
+# ============================================================
 
+.PHONY: clean
+clean:
+	rm -rf $(BUILD_DIR)
+
+
+# ============================================================
+# Rebuild everything
+# ============================================================
+
+.PHONY: rebuild
+rebuild: clean all
+
+# ============================================================
+# RTL Simulation
+# ============================================================
+
+.PHONY: sim
+sim: $(VVP)
+	vvp $(VVP)
+
+
+$(VVP): $(RTL) $(TB) | $(BUILD_DIR)
+	iverilog \
+		-g2012 \
+		-s $(SIM_TOP) \
+		-o $(VVP) \
+		$(RTL) \
+		$(TB)
+
+
+# ============================================================
+# Waveform viewer
+# ============================================================
+
+.PHONY: wave
 wave: sim
 	gtkwave $(VCD)
 
-clean:
-	@if exist "$(BUILD_DIR)" rmdir /S /Q "$(BUILD_DIR)"
+# ============================================================
+# Verilator lint
+# ============================================================
 
-help:
-	@echo make all       - Synthesize, place and route, generate BIN
-	@echo make           - Same as make all
-	@echo make synth     - Run Yosys synthesis
-	@echo make pnr       - Run nextpnr
-	@echo make pack      - Generate bitstream
-	@echo make prog      - Program the iCESugar SPI flash
-	@echo make sim       - Run Icarus Verilog simulation
-	@echo make wave      - Simulate and open GTKWave
-	@echo make clean     - Remove build directory
+.PHONY: vlint
+vlint:
+	verilator \
+		--lint-only \
+		-Wall \
+		--top-module $(TOP) \
+		$(RTL)
+
+
+# ============================================================
+# Verilator C++ simulation
+# ============================================================
+
+$(VERILATOR_BIN): $(RTL) sim/verilator_main.cpp | $(BUILD_DIR)
+	verilator \
+		--cc \
+		--exe \
+		--build \
+		-j 0 \
+		-Wall \
+		--top-module $(TOP) \
+		--trace \
+		--Mdir $(VERILATOR_DIR) \
+		-o V$(TOP) \
+		$(RTL_ABS) \
+		$(VERILATOR_CPP)
+
+
+.PHONY: vsim
+vsim: $(VERILATOR_BIN)
+	$(VERILATOR_BIN)
+
+
+# ============================================================
+# Verilator waveform
+# ============================================================
+
+.PHONY: vwave
+vwave: vsim
+	gtkwave $(VERILATOR_VCD)

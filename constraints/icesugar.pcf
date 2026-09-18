@@ -1,6 +1,10 @@
 # iCESugar v1.5 onboard 12 MHz clock
 set_io clk 35
-set_io led_r 40
-set_io led_g 41
-set_io led_b 39
-
+set_io wire_a 36
+set_io wire_b 37
+set_io wire_inverter 38
+set_io wire_and_gate 39
+set_io wire_or_gate 40
+set_io wire_xor_gate 41
+set_io wire_pass_through 42
+set_io wire_inverter_2 43

@@ -1,53 +1,37 @@
-#include <iostream>
+#include <verilated.h>
+#include <verilated_vcd_c.h>
+#include "Vtop.h" // verilator编译后自动生成的头文件
 
-#include "Vtop.h"
-#include "verilated.h"
-#include "verilated_vcd_c.h"
-
-int main(int argc, char **argv)
-{
-    // 初始化 Verilator 运行环境
+int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
 
-    // 实例化被测模块
-    Vtop *top = new Vtop;
+    // 实例化DUT
+    Vtop* dut = new Vtop;
 
-    // 开启波形追踪
+    // 开启VCD波形记录
+    VerilatedVcdC* tfp = new VerilatedVcdC;
     Verilated::traceEverOn(true);
-    VerilatedVcdC *tfp = new VerilatedVcdC;
-    top->trace(tfp, 99); // 99 = 追踪层级深度，足够覆盖所有子模块信号
-    tfp->open("wave.vcd");
+    dut->trace(tfp, 99); // 深度99，抓取所有子模块信号
+    tfp->open("wave.vcd"); // 输出文件名 wave.vcd
 
-    vluint64_t main_time = 0; // 仿真时间戳，单位与 `timescale 1ns/1ps 对应，即 1 = 1ns
+    vluint64_t sim_time = 0; // 仿真时间，单位ns
 
-    // 施加一组输入并保持 10ns，期间每 1ns 采样一次波形
-    auto apply_and_hold = [&](int a, int b, int hold_ns)
-    {
-        top->wire_a = a;
-        top->wire_b = b;
+    // 遍历8位输入：0 ~ 255，一共256种组合
+    for(int sw_val = 0; sw_val <= 255; sw_val++){
+        dut->switches = sw_val;    // 设置输入switches
+        dut->eval();               // 评估组合逻辑（你的代码没有时钟，只需要eval）
 
-        for (int i = 0; i < hold_ns; i++)
-        {
-            top->eval();          // 组合逻辑求值（无时钟，纯组合电路）
-            tfp->dump(main_time); // 在当前时刻写入波形
-            main_time++;
-        }
-    };
+        tfp->dump(sim_time);       // 把当前时刻信号存入vcd
+        sim_time += 10;            // 每次间隔10ns，方便在波形里区分
 
-    // 00 -> 01 -> 10 -> 11，每组保持 10ns
-    apply_and_hold(0, 0, 10);
-    apply_and_hold(0, 1, 10);
-    apply_and_hold(1, 0, 10);
-    apply_and_hold(1, 1, 10);
-
-    // 最后再 eval + dump 一次，确保末尾状态被完整记录
-    top->eval();
-    tfp->dump(main_time);
+        // 打印到终端，方便核对结果
+        printf("switches = 0x%02X | leds = 0x%02X | leds2 = 0x%02X\n",
+               dut->switches, dut->leds, dut->leds2);
+    }
 
     // 收尾
     tfp->close();
+    delete dut;
     delete tfp;
-    delete top;
-
     return 0;
 }

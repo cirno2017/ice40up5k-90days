@@ -1,23 +1,24 @@
 # iCESugar v1.5 onboard 12 MHz clock
 # set_io clk 35
 
-set_io leds[0] 45
-set_io leds[1] 43
-set_io leds[2] 38
-set_io leds[3] 36
-set_io leds[4] 46
-set_io leds[5] 44
-set_io leds[6] 42
-set_io leds[7] 37
+# set_io leds[0] 45
+# set_io leds[1] 43
+# set_io leds[2] 38
+# set_io leds[3] 36
+# set_io leds[4] 46
+# set_io leds[5] 44
+# set_io leds[6] 42
+# set_io leds[7] 37
 
 set_io switches[0] 48
 set_io switches[1] 3
-set_io switches[2] 6
-set_io switches[3] 10
-set_io switches[4] 47
-set_io switches[5] 2
-set_io switches[6] 4
-set_io switches[7] 9
+
+# set_io switches[2] 6
+# set_io switches[3] 10
+# set_io switches[4] 47
+# set_io switches[5] 2
+# set_io switches[6] 4
+# set_io switches[7] 9
 
 set_io leds2[0] 34
 set_io leds2[1] 31

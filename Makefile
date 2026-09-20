@@ -58,7 +58,7 @@ $(BUILD_DIR):
 # ============================================================
 
 $(JSON): $(RTL) | $(BUILD_DIR)
-	yosys -p "read_verilog $(RTL); synth_ice40 -top $(TOP) -json $(JSON)"
+	yosys -p "read_verilog -sv $(RTL); synth_ice40 -top $(TOP) -json $(JSON)"
 
 
 # ============================================================
@@ -98,7 +98,7 @@ prog: $(BIN)
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR)/*
 
 
 # ============================================================

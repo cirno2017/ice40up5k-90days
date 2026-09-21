@@ -5,6 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/build",
+                "${workspaceFolder}/build/verilator",
                 "/usr/share/verilator/include"
             ],
             "defines": [],

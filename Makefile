@@ -98,7 +98,7 @@ prog: $(BIN)
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR)/*
+	rm -rf $(BUILD_DIR)/verilator/*
 
 
 # ============================================================

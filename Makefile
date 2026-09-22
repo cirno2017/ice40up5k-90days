@@ -178,3 +178,100 @@ vsim: $(VERILATOR_BIN)
 .PHONY: vwave
 vwave: vsim
 	gtkwave $(VERILATOR_VCD)
+
+
+
+
+
+# ============================================================
+# Verilator 多位宽仿真 (WIDTH = 1 / 8 / 12)
+#
+#   测试配置    Verilator 参数         独立构建目录
+#   1  位      -GTOP_WIDTH=1         build/verilator_w1
+#   8  位      -GTOP_WIDTH=8         build/verilator_w8
+#   12 位      -GTOP_WIDTH=12        build/verilator_w12
+#
+#   make sim1 / sim8 / sim12   分别构建并运行对应位宽的仿真
+#   make simall                依次运行全部三个位宽
+#   make vwave1 / vwave8 / vwave12   用 gtkwave 查看对应波形
+# ============================================================
+
+VERILATOR_DIR_W1  := $(BUILD_DIR)/verilator_w1
+VERILATOR_DIR_W8  := $(BUILD_DIR)/verilator_w8
+VERILATOR_DIR_W12 := $(BUILD_DIR)/verilator_w12
+
+VERILATOR_BIN_W1  := $(VERILATOR_DIR_W1)/V$(TOP)
+VERILATOR_BIN_W8  := $(VERILATOR_DIR_W8)/V$(TOP)
+VERILATOR_BIN_W12 := $(VERILATOR_DIR_W12)/V$(TOP)
+
+VERILATOR_VCD_W1  := $(VERILATOR_DIR_W1)/wave_w1.vcd
+VERILATOR_VCD_W8  := $(VERILATOR_DIR_W8)/wave_w8.vcd
+VERILATOR_VCD_W12 := $(VERILATOR_DIR_W12)/wave_w12.vcd
+
+$(VERILATOR_BIN_W1): $(RTL) $(VERILATOR_CPP) | $(BUILD_DIR)
+	verilator \
+		--cc \
+		--exe \
+		--build \
+		-j 0 \
+		-Wall \
+		--top-module $(TOP) \
+		--trace \
+		-GTOP_WIDTH=1 \
+		--Mdir $(VERILATOR_DIR_W1) \
+		-o V$(TOP) \
+		$(RTL_ABS) \
+		$(VERILATOR_CPP)
+
+$(VERILATOR_BIN_W8): $(RTL) $(VERILATOR_CPP) | $(BUILD_DIR)
+	verilator \
+		--cc \
+		--exe \
+		--build \
+		-j 0 \
+		-Wall \
+		--top-module $(TOP) \
+		--trace \
+		-GTOP_WIDTH=8 \
+		--Mdir $(VERILATOR_DIR_W8) \
+		-o V$(TOP) \
+		$(RTL_ABS) \
+		$(VERILATOR_CPP)
+
+$(VERILATOR_BIN_W12): $(RTL) $(VERILATOR_CPP) | $(BUILD_DIR)
+	verilator \
+		--cc \
+		--exe \
+		--build \
+		-j 0 \
+		-Wall \
+		--top-module $(TOP) \
+		--trace \
+		-GTOP_WIDTH=12 \
+		--Mdir $(VERILATOR_DIR_W12) \
+		-o V$(TOP) \
+		$(RTL_ABS) \
+		$(VERILATOR_CPP)
+
+.PHONY: sim1 sim8 sim12
+sim1: $(VERILATOR_BIN_W1)
+	$(VERILATOR_BIN_W1) 1 $(VERILATOR_DIR_W1)
+
+sim8: $(VERILATOR_BIN_W8)
+	$(VERILATOR_BIN_W8) 8 $(VERILATOR_DIR_W8)
+
+sim12: $(VERILATOR_BIN_W12)
+	$(VERILATOR_BIN_W12) 12 $(VERILATOR_DIR_W12)
+
+.PHONY: simall
+simall: sim1 sim8 sim12
+
+.PHONY: vwave1 vwave8 vwave12
+vwave1: sim1
+	gtkwave $(VERILATOR_VCD_W1)
+
+vwave8: sim8
+	gtkwave $(VERILATOR_VCD_W8)
+
+vwave12: sim12
+	gtkwave $(VERILATOR_VCD_W12)

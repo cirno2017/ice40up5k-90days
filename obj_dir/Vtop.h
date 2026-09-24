@@ -12,7 +12,6 @@
 
 class Vtop__Syms;
 class Vtop___024root;
-class VerilatedVcdC;
 
 // This class is the main interface to the Verilated model
 class alignas(VL_CACHE_LINE_BYTES) Vtop VL_NOT_FINAL : public VerilatedModel {
@@ -25,13 +24,11 @@ class alignas(VL_CACHE_LINE_BYTES) Vtop VL_NOT_FINAL : public VerilatedModel {
     // PORTS
     // The application code writes and reads these signals to
     // propagate new values into/out from the Verilated model.
-    VL_IN8(&wire_a,0,0);
-    VL_IN8(&wire_b,0,0);
-    VL_OUT8(&wire_inverter,0,0);
-    VL_OUT8(&wire_and_gate,0,0);
-    VL_OUT8(&wire_or_gate,0,0);
-    VL_OUT8(&wire_xor_gate,0,0);
-    VL_OUT8(&wire_pass_through,0,0);
+    VL_IN8(&clk,0,0);
+    VL_IN8(&en,0,0);
+    VL_IN8(&d,7,0);
+    VL_OUT8(&dff8_q,7,0);
+    VL_OUT8(&reg8_en_q,7,0);
 
     // CELLS
     // Public to allow access to /* verilator public */ items.
@@ -83,7 +80,6 @@ class alignas(VL_CACHE_LINE_BYTES) Vtop VL_NOT_FINAL : public VerilatedModel {
     /// Re-init after cloning the model at the process level (e.g. fork in Linux)
     /// Re-allocate necessary resources. Called after cloning.
     void atClone() const;
-    std::unique_ptr<VerilatedTraceConfig> traceConfig() const override final;
 };
 
 #endif  // guard

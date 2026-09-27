@@ -20,7 +20,7 @@ int main(int argc, char **argv)
 
     uint8_t expected = 0;
 
-    //========== 初始化流程 ==========
+    //========== 初始化流程：作业规定初始化顺序 ==========
     dut->clk = 0;
     dut->rst = 1;
     dut->clear = 0;
@@ -52,6 +52,7 @@ int main(int argc, char **argv)
     //=====================================================
     // clock_tick：完整一个时钟周期
     // 输入在clk低电平设置；上升沿更新DUT与参考模型
+    // 【新增】低电平dump后，拉高时钟前检查count，禁止提前变化
     //=====================================================
     auto clock_tick = [&](uint8_t rst_samp, uint8_t clear_samp, uint8_t en_samp)
     {
@@ -63,6 +64,16 @@ int main(int argc, char **argv)
         dut->eval();
         sim_time += CLK_PERIOD / 2;
         vcd->dump(sim_time);
+
+        // ====================== 新增检查点：上升沿到来之前，count不能提前改变 ======================
+        // 尚未出现上升沿，expected不变，DUT count必须保持旧值
+        if (static_cast<uint8_t>(dut->count) != expected)
+        {
+            std::cerr << "FAIL: count changed before posedge, t="
+                      << sim_time << '\n';
+            exit(EXIT_FAILURE);
+        }
+        // ========================================================================================
 
         // 上升沿
         dut->clk = 1;
@@ -127,12 +138,12 @@ int main(int argc, char **argv)
     clock_tick(0, 0, 1);
     clock_tick(1, 1, 1);
 
-    std::cout << "\n==== Test6: Run‑time reset (assert between edges) ====\n";
+    std::cout << "\n==== Test6: Run‑time reset (assert during clk HIGH) ====\n";
     for (int i = 0; i < 5; ++i)
     {
         clock_tick(0, 0, 1);
     }
-    // clk低电平，边沿之间拉高rst，不产生上升沿
+    // 【修复注释】clock_tick返回后clk停在高电平，在clk高电平期间拉高rst，不产生上升沿
     dut->rst = 1;
     dut->eval();
     sim_time += CLK_PERIOD / 4;
@@ -150,17 +161,24 @@ int main(int argc, char **argv)
         clock_tick(0, 0, 1);
     }
     dut->clk = 0;
+    // 拉高rst，立刻检查
     dut->rst = 1;
     dut->eval();
     sim_time += CLK_PERIOD / 8;
     vcd->dump(sim_time);
+    if (static_cast<uint8_t>(dut->count) != expected)
+    {
+        std::cerr << "FAIL: count changed after assert rst, before posedge\n";
+        exit(EXIT_FAILURE);
+    }
+    // 释放rst，再次检查
     dut->rst = 0;
     dut->eval();
     sim_time += CLK_PERIOD / 8;
     vcd->dump(sim_time);
     if (static_cast<uint8_t>(dut->count) != expected)
     {
-        std::cerr << "FAIL: inter‑edge rst pulse incorrectly cleared counter\n";
+        std::cerr << "FAIL: count changed after deassert rst, before posedge\n";
         exit(EXIT_FAILURE);
     }
     clock_tick(0, 0, 1);

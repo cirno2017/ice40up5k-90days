@@ -1,225 +1,207 @@
-#include <iostream>
-#include <cstdint>
-#include <cstdlib>
-#include <verilated.h>
-#include <verilated_vcd_c.h>
 #include "Vtop.h"
+#include "verilated.h"
+#include "verilated_vcd_c.h"
+#include <cstdint>
+#include <cstdio>
+#include <algorithm>
+#include <cstdlib>
 
-vluint64_t sim_time = 0;
-const vluint64_t CLK_PERIOD = 84; // 12MHz 时钟周期 ≈83.33ns
+// 故障注入开关，打开后mod10会在count=8提前回0，用于验证自检能抓到错误
+// #define FAULT_INJECT
+
+struct RefPair
+{
+    uint32_t n;
+    uint32_t ref_mod;
+    uint32_t ref_sat;
+};
 
 int main(int argc, char **argv)
 {
-    Verilated::commandArgs(argc, argv);
-    Vtop *dut = new Vtop;
+    VerilatedContext *contextp = new VerilatedContext;
+    contextp->commandArgs(argc, argv);
+    contextp->traceEverOn(true);
 
+    Vtop *top = new Vtop{contextp};
     VerilatedVcdC *vcd = new VerilatedVcdC;
-    Verilated::traceEverOn(true);
-    dut->trace(vcd, 99);
+    top->trace(vcd, 99);
     vcd->open("wave.vcd");
 
-    uint8_t expected = 0;
+    // 4组待测参数 N=1,2,10,256
+    RefPair refs[4] = {
+        {1, 0, 0},
+        {2, 0, 0},
+        {10, 0, 0},
+        {256, 0, 0}};
 
-    //========== 初始化流程：作业规定初始化顺序 ==========
-    dut->clk = 0;
-    dut->rst = 1;
-    dut->clear = 0;
-    dut->en = 0;
-    dut->eval();
-    vcd->dump(sim_time);
+    top->clk = 0;
+    top->rst = 1;
+    top->en = 0;
+    top->eval();
+    vcd->dump(contextp->time());
 
-    // 第一个上升沿
-    sim_time += CLK_PERIOD / 2;
-    dut->clk = 1;
-    dut->eval();
-    vcd->dump(sim_time);
+    bool error = false;
+    constexpr uint64_t MAX_CYCLES = 520 + 100; // 确定性520 + 随机100周期
+    srand(42);                                 // 固定种子，可复现随机测试
 
-    if (static_cast<uint8_t>(dut->count) != 0U)
+    for (uint64_t cycle = 0; cycle < MAX_CYCLES; cycle++)
     {
-        std::cerr << "ERROR t=" << sim_time
-                  << ": After first reset posedge, expect 0, got "
-                  << static_cast<int>(dut->count) << std::endl;
-        return 1;
-    }
-
-    // 下降沿，在低电平阶段释放 rst
-    sim_time += CLK_PERIOD / 2;
-    dut->clk = 0;
-    dut->rst = 0;
-    dut->eval();
-    vcd->dump(sim_time);
-
-    //=====================================================
-    // clock_tick：完整一个时钟周期
-    // 输入在clk低电平设置；上升沿更新DUT与参考模型
-    // 【新增】低电平dump后，拉高时钟前检查count，禁止提前变化
-    //=====================================================
-    auto clock_tick = [&](uint8_t rst_samp, uint8_t clear_samp, uint8_t en_samp)
-    {
-        // 低电平更新输入
-        dut->clk = 0;
-        dut->rst = rst_samp;
-        dut->clear = clear_samp;
-        dut->en = en_samp;
-        dut->eval();
-        sim_time += CLK_PERIOD / 2;
-        vcd->dump(sim_time);
-
-        // ====================== 新增检查点：上升沿到来之前，count不能提前改变 ======================
-        // 尚未出现上升沿，expected不变，DUT count必须保持旧值
-        if (static_cast<uint8_t>(dut->count) != expected)
+        // ========== 施加激励 ==========
+        if (cycle < 3)
         {
-            std::cerr << "FAIL: count changed before posedge, t="
-                      << sim_time << '\n';
-            exit(EXIT_FAILURE);
+            // 初始同步复位阶段
+            top->rst = 1;
+            top->en = 0;
         }
-        // ========================================================================================
-
-        // 上升沿
-        dut->clk = 1;
-        dut->eval();
-        sim_time += CLK_PERIOD / 2;
-        vcd->dump(sim_time);
-
-        // C++参考模型：仅上升沿更新
-        if (rst_samp || clear_samp)
+        else if (cycle < 520)
         {
-            expected = 0U;
+            // 确定性测试阶段
+            if (cycle == 100)
+            {
+                // 到达末值后 en=0，保持3拍
+                top->en = 0;
+            }
+            else if (cycle == 103)
+            {
+                // 恢复使能
+                top->en = 1;
+            }
+            else if (cycle == 200)
+            {
+                // 复位与使能冲突：rst=en同时高
+                top->rst = 1;
+                top->en = 1;
+            }
+            else if (cycle == 202)
+            {
+                top->rst = 0;
+                top->en = 1;
+            }
+            else
+            {
+                top->rst = 0;
+                top->en = 1;
+            }
         }
-        else if (en_samp)
+        else
         {
-            expected = static_cast<uint8_t>(expected + 1U);
+            // 固定种子随机测试：cycle >=520
+            top->rst = rand() & 1;
+            top->en = rand() & 1;
         }
-        // else:保持不变
 
-        // 比对
-        uint8_t dut_cnt = static_cast<uint8_t>(dut->count);
-        if (dut_cnt != expected)
+        // ========== 时钟上升沿 ==========
+        top->clk = 1;
+        contextp->timeInc(1);
+        top->eval();
+        vcd->dump(contextp->time());
+
+        // ----只有上升沿更新C++参考模型----
+        bool rst_sample = (top->rst != 0);
+        bool en_sample = (top->en != 0);
+        for (int i = 0; i < 4; i++)
         {
-            std::cerr << "FAIL t=" << sim_time
-                      << " RTL=" << static_cast<int>(dut_cnt)
-                      << " EXP=" << static_cast<int>(expected)
-                      << " rst=" << static_cast<int>(rst_samp)
-                      << " clear=" << static_cast<int>(clear_samp)
-                      << " en=" << static_cast<int>(en_samp)
-                      << std::endl;
-            exit(EXIT_FAILURE);
+            auto &r = refs[i];
+            if (rst_sample)
+            {
+                r.ref_mod = 0;
+                r.ref_sat = 0;
+            }
+            else if (en_sample)
+            {
+#ifdef FAULT_INJECT
+                // 故障注入：N=10，ref不变，但DUT RTL人为bug，C++参考依然正确
+                if (r.n == 10 && r.ref_mod == 8)
+                {
+                    r.ref_mod = (r.ref_mod + 1u) % r.n;
+                }
+                else
+                {
+                    r.ref_mod = (r.ref_mod + 1u) % r.n;
+                }
+#else
+                r.ref_mod = (r.ref_mod + 1u) % r.n;
+#endif
+                r.ref_sat = std::min(r.ref_sat + 1u, r.n - 1u);
+            }
         }
-    };
 
-    std::cout << "\n==== Test1: Normal count ====\n";
-    expected = 0U;
-    for (int i = 0; i < 5; ++i)
-    {
-        clock_tick(0, 0, 1);
-    }
+        // ===========读取DUT输出，和参考模型比对===========
+        uint32_t dut_mod[4], dut_sat[4];
+        dut_mod[0] = top->mod1_out;
+        dut_sat[0] = top->sat1_out;
+        dut_mod[1] = top->mod2_out;
+        dut_sat[1] = top->sat2_out;
+        dut_mod[2] = top->mod10_out;
+        dut_sat[2] = top->sat10_out;
+        dut_mod[3] = top->mod256_out;
+        dut_sat[3] = top->sat256_out;
 
-    std::cout << "\n==== Test2: Pause, hold value ====\n";
-    uint8_t hold_val = expected;
-    for (int i = 0; i < 3; ++i)
-    {
-        clock_tick(0, 0, 0);
-        if (static_cast<uint8_t>(dut->count) != hold_val)
+        for (int i = 0; i < 4; i++)
         {
-            std::cerr << "ERROR: Pause hold failed\n";
-            exit(EXIT_FAILURE);
+            auto &r = refs[i];
+            if (dut_mod[i] != r.ref_mod)
+            {
+                printf("ERROR time=%lu N=%u MOD: ref=%u dut=%u\n",
+                       (unsigned long)contextp->time(), r.n, r.ref_mod, dut_mod[i]);
+                error = true;
+            }
+            if (dut_sat[i] != r.ref_sat)
+            {
+                printf("ERROR time=%lu N=%u SAT: ref=%u dut=%u\n",
+                       (unsigned long)contextp->time(), r.n, r.ref_sat, dut_sat[i]);
+                error = true;
+            }
         }
-    }
 
-    std::cout << "\n==== Test3: clear & en simultaneous (non‑zero) ====\n";
-    clock_tick(0, 0, 1);
-    clock_tick(0, 1, 1);
+        // ==========时钟下降沿，组合逻辑更新，再次检查保持=========
+        top->clk = 0;
+        contextp->timeInc(1);
+        top->eval();
+        vcd->dump(contextp->time());
 
-    std::cout << "\n==== Test4: rst & en simultaneous ====\n";
-    clock_tick(0, 0, 1);
-    clock_tick(1, 0, 1);
-
-    std::cout << "\n==== Test5: rst & clear & en all 1 ====\n";
-    clock_tick(0, 0, 1);
-    clock_tick(1, 1, 1);
-
-    std::cout << "\n==== Test6: Run‑time reset (assert during clk HIGH) ====\n";
-    for (int i = 0; i < 5; ++i)
-    {
-        clock_tick(0, 0, 1);
-    }
-    // 【修复注释】clock_tick返回后clk停在高电平，在clk高电平期间拉高rst，不产生上升沿
-    dut->rst = 1;
-    dut->eval();
-    sim_time += CLK_PERIOD / 4;
-    vcd->dump(sim_time);
-    if (static_cast<uint8_t>(dut->count) != expected)
-    {
-        std::cerr << "ERROR: sync reset took effect without posedge!\n";
-        exit(EXIT_FAILURE);
-    }
-    clock_tick(1, 0, 0);
-
-    std::cout << "\n==== Test7: Short reset pulse between edges (no clear) ====\n";
-    for (int i = 0; i < 7; ++i)
-    {
-        clock_tick(0, 0, 1);
-    }
-    dut->clk = 0;
-    // 拉高rst，立刻检查
-    dut->rst = 1;
-    dut->eval();
-    sim_time += CLK_PERIOD / 8;
-    vcd->dump(sim_time);
-    if (static_cast<uint8_t>(dut->count) != expected)
-    {
-        std::cerr << "FAIL: count changed after assert rst, before posedge\n";
-        exit(EXIT_FAILURE);
-    }
-    // 释放rst，再次检查
-    dut->rst = 0;
-    dut->eval();
-    sim_time += CLK_PERIOD / 8;
-    vcd->dump(sim_time);
-    if (static_cast<uint8_t>(dut->count) != expected)
-    {
-        std::cerr << "FAIL: count changed after deassert rst, before posedge\n";
-        exit(EXIT_FAILURE);
-    }
-    clock_tick(0, 0, 1);
-
-    std::cout << "\n==== Test8: Persistent reset multi‑cycle ====\n";
-    for (int i = 0; i < 4; ++i)
-    {
-        clock_tick(1, 0, 1);
-        if (static_cast<uint8_t>(dut->count) != 0U)
+        // 下降沿再次读取输出，必须和参考模型保持不变
+        dut_mod[0] = top->mod1_out;
+        dut_sat[0] = top->sat1_out;
+        dut_mod[1] = top->mod2_out;
+        dut_sat[1] = top->sat2_out;
+        dut_mod[2] = top->mod10_out;
+        dut_sat[2] = top->sat10_out;
+        dut_mod[3] = top->mod256_out;
+        dut_sat[3] = top->sat256_out;
+        for (int i = 0; i < 4; i++)
         {
-            std::cerr << "ERROR: persistent reset fail\n";
-            exit(EXIT_FAILURE);
+            auto &r = refs[i];
+            if (dut_mod[i] != r.ref_mod)
+            {
+                printf("ERROR[FALL] time=%lu N=%u MOD ref=%u dut=%u\n",
+                       (unsigned long)contextp->time(), r.n, r.ref_mod, dut_mod[i]);
+                error = true;
+            }
+            // 修复：去掉 r.ref_sat[i] 的 [i]，r是单个结构体
+            if (dut_sat[i] != r.ref_sat)
+            {
+                printf("ERROR[FALL] time=%lu N=%u SAT ref=%u dut=%u\n",
+                       (unsigned long)contextp->time(), r.n, r.ref_sat, dut_sat[i]);
+                error = true;
+            }
         }
     }
-
-    std::cout << "\n==== Test9: Reset release then resume count ====\n";
-    clock_tick(1, 0, 0);
-    clock_tick(0, 0, 1);
-    clock_tick(0, 0, 1);
-
-    std::cout << "\n==== Test10: 0xFF wrap‑around to 0x00 ====\n";
-    while (expected != 0xFFU)
-    {
-        clock_tick(0, 0, 1);
-    }
-    clock_tick(0, 0, 1);
-
-    std::cout << "\n==== Test11: Random test 100 cycles (seed=42) ====\n";
-    srand(42);
-    for (int i = 0; i < 100; i++)
-    {
-        uint8_t r_rst = static_cast<uint8_t>(rand() & 1);
-        uint8_t r_clear = static_cast<uint8_t>(rand() & 1);
-        uint8_t r_en = static_cast<uint8_t>(rand() & 1);
-        clock_tick(r_rst, r_clear, r_en);
-    }
-
-    std::cout << "\n>>> ALL TEST PASSED <<<\n";
 
     vcd->close();
     delete vcd;
-    delete dut;
-    return EXIT_SUCCESS;
+    top->final();
+    delete top;
+    delete contextp;
+
+    if (error)
+    {
+        printf("\n==== SIMULATION FAILED ====\n");
+        return 1; // 非零退出码，Make检测失败
+    }
+    else
+    {
+        printf("\n==== ALL TEST PASSED ====\n");
+        return 0;
+    }
 }

@@ -17,6 +17,7 @@ int main(int argc, char **argv)
 {
     VerilatedContext *contextp = new VerilatedContext;
     contextp->commandArgs(argc, argv);
+    // ✅ 必须在实例化DUT、VCD之前开启traceEverOn
     contextp->traceEverOn(true);
 
     Vtop *top = new Vtop{contextp};
@@ -24,23 +25,20 @@ int main(int argc, char **argv)
     top->trace(vcd, 99);
     vcd->open("wave.vcd");
 
-    // 4组测试用例 N=1,2,10,256
     RefPair refs[4] = {
         {1, 0, 0},
         {2, 0, 0},
         {10, 0, 0},
         {256, 0, 0}};
-
     bool error = false;
-    constexpr uint64_t MAX_CYCLES = 700;
+    constexpr uint64_t MAX_CYCLES = 850;
     srand(42);
 
-    // 初始状态
     top->clk = 0;
     top->rst = 1;
     top->en = 0;
     top->eval();
-    vcd->dump(contextp->time());
+    vcd->dump(0);
 
     for (uint64_t cycle = 0; cycle < MAX_CYCLES; cycle++)
     {
@@ -51,17 +49,29 @@ int main(int argc, char **argv)
             top->rst = 1;
             top->en = 0;
         }
-        else if (cycle >= 3 && cycle < 520)
+        else if (cycle >= 3 && cycle < 523)
         {
             top->rst = 0;
             top->en = 1;
         }
-        else if (cycle >= 520 && cycle < 523)
+        else if (cycle >= 523 && cycle < 526)
         {
+            // N=10 末值暂停3拍
             top->rst = 0;
             top->en = 0;
         }
-        else if (cycle == 523)
+        else if (cycle == 526)
+        {
+            top->rst = 0;
+            top->en = 1;
+        }
+        else if (cycle >= 550 && cycle < 553)
+        {
+            // N=256 末值暂停3拍
+            top->rst = 0;
+            top->en = 0;
+        }
+        else if (cycle == 553)
         {
             top->rst = 0;
             top->en = 1;
@@ -76,20 +86,57 @@ int main(int argc, char **argv)
             top->rst = 0;
             top->en = 1;
         }
-        else if (cycle >= 650)
+        else if (cycle >= 700 && cycle < 800)
         {
+            // 随机测试100周期
             top->rst = rand() & 1;
             top->en = rand() & 1;
         }
+        else
+        {
+            top->rst = 0;
+            top->en = 1;
+        }
+
         contextp->timeInc(1);
         top->eval();
-        vcd->dump(contextp->time()); // ✅ 时间推进后，仅一次dump
+        vcd->dump(contextp->time());
 
-        // ========== 阶段2：clk上升沿 ==========
+        // ========== 低电平比对，cycle>0，跳过初始复位 ==========
+        if (cycle > 0)
+        {
+            uint32_t dut_mod[4], dut_sat[4];
+            dut_mod[0] = top->mod1_out;
+            dut_sat[0] = top->sat1_out;
+            dut_mod[1] = top->mod2_out;
+            dut_sat[1] = top->sat2_out;
+            dut_mod[2] = top->mod10_out;
+            dut_sat[2] = top->sat10_out;
+            dut_mod[3] = top->mod256_out;
+            dut_sat[3] = top->sat256_out;
+            for (int i = 0; i < 4; i++)
+            {
+                auto &r = refs[i];
+                if (dut_mod[i] != r.ref_mod)
+                {
+                    printf("[LOW] time=%lu N=%u MOD: ref=%u dut=%u\n",
+                           (unsigned long)contextp->time(), r.n, r.ref_mod, dut_mod[i]);
+                    error = true;
+                }
+                if (dut_sat[i] != r.ref_sat)
+                {
+                    printf("[LOW] time=%lu N=%u SAT: ref=%u dut=%u\n",
+                           (unsigned long)contextp->time(), r.n, r.ref_sat, dut_sat[i]);
+                    error = true;
+                }
+            }
+        }
+
+        // ========== 阶段2：上升沿 ==========
         top->clk = 1;
         contextp->timeInc(1);
         top->eval();
-        vcd->dump(contextp->time()); // ✅ 时间推进后，仅一次dump
+        vcd->dump(contextp->time());
 
         bool rst_sample = (top->rst != 0);
         bool en_sample = (top->en != 0);
@@ -107,6 +154,7 @@ int main(int argc, char **argv)
                 r.ref_sat = std::min(r.ref_sat + 1u, r.n - 1u);
             }
         }
+
         uint32_t dut_mod[4], dut_sat[4];
         dut_mod[0] = top->mod1_out;
         dut_sat[0] = top->sat1_out;
@@ -121,22 +169,24 @@ int main(int argc, char **argv)
             auto &r = refs[i];
             if (dut_mod[i] != r.ref_mod)
             {
-                printf("ERROR time=%lu N=%u MOD: ref=%u dut=%u\n",
+                printf("[RISE] time=%lu N=%u MOD: ref=%u dut=%u\n",
                        (unsigned long)contextp->time(), r.n, r.ref_mod, dut_mod[i]);
                 error = true;
             }
             if (dut_sat[i] != r.ref_sat)
             {
-                printf("ERROR time=%lu N=%u SAT: ref=%u dut=%u\n",
+                printf("[RISE] time=%lu N=%u SAT: ref=%u dut=%u\n",
                        (unsigned long)contextp->time(), r.n, r.ref_sat, dut_sat[i]);
                 error = true;
             }
         }
 
-        // ========== 阶段3：clk=1高电平 ==========
+        // ========== 阶段3：高电平修改rst/en，检查输出保持 ==========
+        uint8_t old_rst = top->rst;
+        uint8_t old_en = top->en;
+        top->rst = rand() & 1;
+        top->en = rand() & 1;
         top->eval();
-        // ❗这里不再dump！没有timeInc，时间不变，避免重复dump警告
-
         dut_mod[0] = top->mod1_out;
         dut_sat[0] = top->sat1_out;
         dut_mod[1] = top->mod2_out;
@@ -150,24 +200,27 @@ int main(int argc, char **argv)
             auto &r = refs[i];
             if (dut_mod[i] != r.ref_mod)
             {
-                printf("ERROR[HIGH] time=%lu N=%u MOD ref=%u dut=%u\n",
+                printf("[HIGH_CHG] time=%lu N=%u MOD: ref=%u dut=%u\n",
                        (unsigned long)contextp->time(), r.n, r.ref_mod, dut_mod[i]);
                 error = true;
             }
             if (dut_sat[i] != r.ref_sat)
             {
-                printf("ERROR[HIGH] time=%lu N=%u SAT ref=%u dut=%u\n",
+                printf("[HIGH_CHG] time=%lu N=%u SAT: ref=%u dut=%u\n",
                        (unsigned long)contextp->time(), r.n, r.ref_sat, dut_sat[i]);
                 error = true;
             }
         }
+        // 恢复原来控制信号
+        top->rst = old_rst;
+        top->en = old_en;
+        top->eval();
 
-        // ========== 阶段4：clk下降沿 ==========
+        // ========== 阶段4：下降沿 ==========
         top->clk = 0;
         contextp->timeInc(1);
         top->eval();
-        vcd->dump(contextp->time()); // ✅ 时间推进后，仅一次dump
-
+        vcd->dump(contextp->time());
         dut_mod[0] = top->mod1_out;
         dut_sat[0] = top->sat1_out;
         dut_mod[1] = top->mod2_out;
@@ -181,13 +234,13 @@ int main(int argc, char **argv)
             auto &r = refs[i];
             if (dut_mod[i] != r.ref_mod)
             {
-                printf("ERROR[FALL] time=%lu N=%u MOD ref=%u dut=%u\n",
+                printf("[FALL] time=%lu N=%u MOD: ref=%u dut=%u\n",
                        (unsigned long)contextp->time(), r.n, r.ref_mod, dut_mod[i]);
                 error = true;
             }
             if (dut_sat[i] != r.ref_sat)
             {
-                printf("ERROR[FALL] time=%lu N=%u SAT ref=%u dut=%u\n",
+                printf("[FALL] time=%lu N=%u SAT: ref=%u dut=%u\n",
                        (unsigned long)contextp->time(), r.n, r.ref_sat, dut_sat[i]);
                 error = true;
             }

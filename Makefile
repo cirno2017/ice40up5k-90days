@@ -31,7 +31,11 @@ VCD      := $(BUILD_DIR)/top_tb.vcd
 
 VERILATOR_DIR := $(BUILD_DIR)/verilator
 VERILATOR_CPP := $(abspath sim/verilator_main.cpp)
-VERILATOR_BIN := $(VERILATOR_DIR)/V$(TOP)
+
+# 仿真分频比：make vsim DIV=7 可用小分频快速仿真
+# 二进制名带 DIV，切换 DIV 时会自动重新生成模型
+DIV          ?= 6000000
+VERILATOR_BIN := $(VERILATOR_DIR)/V$(TOP)_$(DIV)
 VERILATOR_VCD := wave.vcd
 
 RTL_ABS := $(abspath $(RTL))
@@ -161,14 +165,15 @@ $(VERILATOR_BIN): $(RTL) sim/verilator_main.cpp | $(BUILD_DIR)
 		--top-module $(TOP) \
 		--trace \
 		--Mdir $(VERILATOR_DIR) \
-		-o V$(TOP) \
+		-GDIV_FREQ=$(DIV) \
+		-o V$(TOP)_$(DIV) \
 		$(RTL_ABS) \
 		$(VERILATOR_CPP)
 
 
 .PHONY: vsim
 vsim: $(VERILATOR_BIN)
-	$(VERILATOR_BIN)
+	$(VERILATOR_BIN) $(DIV)
 
 
 # ============================================================

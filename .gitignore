@@ -1,5 +1,6 @@
 # FPGA build output
 build/
+obj_dir/
 
 # Temporary files
 *.tmp

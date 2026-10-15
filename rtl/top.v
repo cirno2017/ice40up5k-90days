@@ -3,10 +3,10 @@
 `timescale 1ns / 1ps
 `default_nettype none
 module top #(
-    parameter integer DIV_FREQ         = 6_000_000,
-    parameter integer CNT_MAX          = DIV_FREQ - 1,     // 1s移位
-    parameter integer DEBOUNCE_CNT_MAX = 120_000 - 1,      // 10ms消抖@12MHz
-    parameter integer DIV_W            = $clog2(DIV_FREQ)
+    parameter integer DIV_FREQ = 6_000_000,  // 12MHz频率，0.5秒位移一次，计数6_000_000
+    parameter integer CNT_MAX = DIV_FREQ - 1,  // 每0.5秒移位
+    parameter integer DEBOUNCE_CNT_MAX = 120_000 - 1,  // 10ms消抖@12MHz
+    parameter integer DIV_W = $clog2(DIV_FREQ)
 ) (
     input logic clk,
     input logic stream_switch,  // 34脚：换向按键
@@ -14,7 +14,7 @@ module top #(
     output logic [7:0] led_stream
 );
 
-  logic [DIV_W-1:0] cnt;
+  logic [DIV_W-1:0] cnt = '0;
   logic [7:0] bit_stream = 8'b00000001;
   logic direction = 1'b0;
   logic run_en    = 1'b1; // 1:运行，0:暂停

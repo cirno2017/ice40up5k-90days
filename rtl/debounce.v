@@ -3,7 +3,8 @@
 
 // 通用按键消抖模块
 // 功能：
-//   1) 对异步按键输入打两拍同步到 clk 时钟域，避免亚稳态；
+//   1) 对异步按键输入打两拍同步到 clk 时钟域，降低亚稳态传播风险
+//      （同步器只提供额外恢复时间，不能保证完全消除亚稳态）；
 //   2) 只有当输入电平连续保持 CNT_MAX+1 个时钟周期不变时，才更新稳定电平；
 //   3) 输出稳定电平 stable，以及下降沿脉冲 fall_pulse（按下瞬间拉高 1 个时钟）。
 module debounce #(
@@ -17,8 +18,10 @@ module debounce #(
 
   localparam integer CNTWIDTH = $clog2(CNT_MAX + 1);
 
-  // ---------- 第1步：跨时钟域同步（打两拍）----------
-  logic sync1, sync2;
+  // ---------- 第1步：跨时钟域同步（打两拍，降低亚稳态传播风险）----------
+  // 按键未按下为高，初值取“未按下”电平，避免上电后凭空产生按下事件
+  logic sync1 = 1'b1;
+  logic sync2 = 1'b1;
   always_ff @(posedge clk) begin
     sync1 <= btn;  // 第1级：先“接住”异步输入
     sync2 <= sync1;  // 第2级：同步到 clk 时钟域
@@ -27,7 +30,13 @@ module debounce #(
   // ---------- 第2步：消抖计数 ----------
   // 与稳定电平一致   -> 计数器清零；
   // 与稳定电平不一致 -> 累加计时，新电平持续满 CNT_MAX+1 拍才采信。
-  logic [CNTWIDTH-1:0] debounce_cnt;
+  logic [CNTWIDTH-1:0] debounce_cnt = '0;
+
+  // 上电启动状态：stable 直接取“未按下”（高电平），
+  // 与 sync1/sync2/stable_last 的初值一致，上电不会产生伪按下事件。
+  // iCE40 触发器支持配置期初始化，yosys/nextpnr 会把初值编入 bitstream，
+  // 仿真模型同样按此初值启动。
+  initial stable = 1'b1;
   always_ff @(posedge clk) begin
     if (sync2 != stable) begin
       if (debounce_cnt == CNT_MAX[CNTWIDTH-1:0]) begin
@@ -42,7 +51,7 @@ module debounce #(
   end
 
   // ---------- 第3步：边沿检测 ----------
-  logic stable_last;
+  logic stable_last = 1'b1;  // 与 stable 初值一致，上电不会出现伪下降沿
   always_ff @(posedge clk) begin
     stable_last <= stable;
   end

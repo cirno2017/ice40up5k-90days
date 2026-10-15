@@ -20,10 +20,11 @@ JSON     := $(BUILD_DIR)/$(TOP).json
 ASC      := $(BUILD_DIR)/$(TOP).asc
 BIN      := $(BUILD_DIR)/$(TOP).bin
 
-SIM_TOP  := top_tb
-TB       := sim/top_tb.v
-VVP      := $(BUILD_DIR)/$(SIM_TOP).vvp
-VCD      := $(BUILD_DIR)/top_tb.vcd
+# 综合/布局布线日志与报告（时序结果 + 资源摘要）
+YOSYS_LOG   := $(BUILD_DIR)/yosys.log
+NEXTPNR_LOG := $(BUILD_DIR)/nextpnr.log
+TIMING_RPT  := $(BUILD_DIR)/timing.txt
+REPORT      := $(BUILD_DIR)/report.txt
 
 # ============================================================
 # Verilator
@@ -62,7 +63,7 @@ $(BUILD_DIR):
 # ============================================================
 
 $(JSON): $(RTL) | $(BUILD_DIR)
-	yosys -p "read_verilog -sv $(RTL); synth_ice40 -top $(TOP) -json $(JSON)"
+	yosys -l $(YOSYS_LOG) -p "read_verilog -sv $(RTL); synth_ice40 -top $(TOP) -json $(JSON)"
 
 
 # ============================================================
@@ -76,7 +77,8 @@ $(ASC): $(JSON) $(PCF)
 		--json $(JSON) \
 		--pcf $(PCF) \
 		--asc $(ASC) \
-		--freq $(FREQ)
+		--freq $(FREQ) \
+		--log $(NEXTPNR_LOG)
 
 
 # ============================================================
@@ -85,6 +87,26 @@ $(ASC): $(JSON) $(PCF)
 
 $(BIN): $(ASC)
 	icepack $(ASC) $(BIN)
+
+
+# ============================================================
+# Static timing + resource summary
+#   report.txt：nextpnr 资源摘要 + nextpnr/icetime 时序结果
+# ============================================================
+
+$(TIMING_RPT): $(ASC)
+	icetime -d $(DEVICE) -P $(PACKAGE) -p $(PCF) -m -r $@ $<
+
+
+.PHONY: report
+report: $(BIN) $(TIMING_RPT)
+	@echo "==== 资源摘要（nextpnr 布局布线后）====" | tee $(REPORT)
+	@sed -n '/Device utilisation/,/^$$/p' $(NEXTPNR_LOG) | tee -a $(REPORT)
+	@echo "" | tee -a $(REPORT)
+	@echo "==== 时序结果（目标 $(FREQ)MHz）====" | tee -a $(REPORT)
+	@grep "Max frequency" $(NEXTPNR_LOG) | tee -a $(REPORT)
+	@grep -E "Max frequency|Total path delay" $(TIMING_RPT) | tee -a $(REPORT)
+	@echo "报告已保存到 $(REPORT)"
 
 
 # ============================================================
@@ -97,12 +119,16 @@ prog: $(BIN)
 
 
 # ============================================================
-# Clean build files
+# Clean: 覆盖全部生成目录与文件
+#   build/   —— 综合、布局布线、bitstream、日志、报告、Verilator 模型
+#   obj_dir/ —— 未指定 --Mdir 时 Verilator 的默认输出目录（历史遗留）
+#   wave.vcd —— vsim 生成的波形
 # ============================================================
 
 .PHONY: clean
 clean:
-	rm -rf $(BUILD_DIR)/verilator/*
+	rm -rf $(BUILD_DIR) obj_dir
+	rm -f $(VERILATOR_VCD)
 
 
 # ============================================================
@@ -112,34 +138,13 @@ clean:
 .PHONY: rebuild
 rebuild: clean all
 
-# ============================================================
-# RTL Simulation
-# ============================================================
-
-.PHONY: sim
-sim: $(VVP)
-	vvp $(VVP)
-
-
-$(VVP): $(RTL) $(TB) | $(BUILD_DIR)
-	iverilog \
-		-g2012 \
-		-s $(SIM_TOP) \
-		-o $(VVP) \
-		$(RTL) \
-		$(TB)
-
 
 # ============================================================
-# Waveform viewer
-# ============================================================
-
-.PHONY: wave
-wave: sim
-	gtkwave $(VCD)
-
-# ============================================================
-# Verilator lint
+# 仿真入口统一为 Verilator C++ 流程（sim/verilator_main.cpp）：
+#   make vlint        —— Verilator lint
+#   make vsim DIV=4   —— 构建并运行 C++ 仿真（DIV 即 DIV_FREQ）
+#   make vwave DIV=4  —— 仿真后用 GTKWave 查看 wave.vcd
+# 旧的 Icarus/iverilog 入口（sim/wave，基于 sim/top_tb.v）已删除。
 # ============================================================
 
 .PHONY: vlint
@@ -183,8 +188,3 @@ vsim: $(VERILATOR_BIN)
 .PHONY: vwave
 vwave: vsim
 	gtkwave $(VERILATOR_VCD)
-
-
-
-
-

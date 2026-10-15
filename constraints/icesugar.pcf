@@ -1,8 +1,41 @@
 # iCESugar v1.5 onboard 12 MHz clock
 set_io clk 35
 
-# 板载开关 BTN_N，低电平有效，使能内部上拉
-set_io -pullup yes rst_n 10
+set_io stream_switch 34
+set_io pause_switch 31
 
-# RGB LED 绿色通道 LED_GRN_N，低电平点亮
-set_io led_n 40
+set_io led_stream[0] 45
+set_io led_stream[1] 43
+set_io led_stream[2] 38
+set_io led_stream[3] 36
+set_io led_stream[4] 46
+set_io led_stream[5] 44
+set_io led_stream[6] 42
+set_io led_stream[7] 37
+
+# set_io PMOD2[0] 45
+# set_io PMOD2[1] 43
+# set_io PMOD2[2] 38
+# set_io PMOD2[3] 36
+# set_io PMOD2[4] 46
+# set_io PMOD2[5] 44
+# set_io PMOD2[6] 42
+# set_io PMOD2[7] 37
+
+# set_io b[0] 48
+# set_io b[1] 3
+# set_io b[2] 6
+# set_io b[3] 10
+# set_io b[4] 47
+# set_io b[5] 2
+# set_io b[6] 4
+# set_io b[7] 9
+
+# set_io PMOD3[0] 34  PMOD3 1
+# set_io PMOD3[1] 31  PMOD3 2
+# set_io PMOD3[2] 27  PMOD3 3
+# set_io PMOD3[3] 25
+# set_io PMOD3[4] 32
+# set_io PMOD3[5] 28
+# set_io PMOD3[6] 26
+# set_io PMOD3[7] 23

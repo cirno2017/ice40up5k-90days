@@ -1,160 +1,224 @@
 // ============================================================
-// Verilator C++ testbench for top (LED toggle every 0.5s @ 12MHz)
-// 参考模型仅在主时钟上升沿更新
+// Verilator C++ 测试平台：iCESugar 流水灯（top + debounce）
+//
+// 由 Makefile 驱动：
+//   make vsim DIV=4  ->  build/verilator/Vtop_4 4
+//   make vsim DIV=7  ->  build/verilator/Vtop_7 7
+// argv[1] = DIV_FREQ，必须与 verilator -G 的参数一致。
+//
+// 完整测试流程：
+//   0) 上电初始状态检查；等待消抖稳定电平收敛到“未按下”
+//   1) 右移流水 x8：逐周期校验移位周期恰好等于 DIV_FREQ
+//   2) 暂停键：LED 必须完全冻结
+//   3) 再按暂停键：恢复右移流水
+//   4) 换向键：改左移；再按一次：恢复右移
+// 全部通过返回 0，任一检查失败返回 1。
 // ============================================================
+
 #include "Vtop.h"
-#include "Vtop___024root.h"  // 访问内部信号 top__DOT__tick
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
-namespace {
+// 与 rtl/debounce.v 默认 CNT_MAX=120000-1 对应：
+// 按键电平需连续保持 120000 个时钟才会被采信
+static const uint64_t DEBOUNCE = 120000;
+// 消抖之后的额外裕量，保证脉冲已发出 / 稳定电平已收敛
+static const uint64_t SETTLE = 50;
 
-// 分频比，与构建时的 -GDIV_FREQ 保持一致（由命令行参数传入）
-std::uint32_t ref_div = 6'000'000u;
+static Vtop *dut = nullptr;
+static VerilatedVcdC *tfp = nullptr; // DIV 很大时置空，关闭波形避免 VCD 过大
+static vluint64_t sim_time = 0;
+static int err_cnt = 0;
 
-vluint64_t sim_time = 0;
-std::uint64_t error_count = 0;
-
-// 参考模型状态（仿真专用）
-std::uint32_t elapsed = 0;
-bool ref_led = false;
-bool ref_tick_r = false;  // tick 在 RTL 中是寄存器输出，期望值同样需要 1 bit 状态
-bool rst_sample = false;
-bool reset_seen = false;  // 第一次有效复位上升沿之前，不验收默认初值
-
-Vtop* dut = nullptr;
-VerilatedVcdC* tfp = nullptr;
-
-// 波形窗口：12M 拍全量 dump 会产生过大的 VCD，
-// 只录制开头一段和第一次 LED 翻转附近的一段
-constexpr vluint64_t kHeadTraceUntil = 600;
-vluint64_t toggle_window_begin = 0;
-vluint64_t toggle_window_end = 0;
-
-void dump() {
-    if (!tfp) return;
-    const bool in_head = sim_time < kHeadTraceUntil;
-    const bool in_toggle =
-        toggle_window_end != 0 && sim_time >= toggle_window_begin &&
-        sim_time <= toggle_window_end;
-    if (in_head || in_toggle) tfp->dump(sim_time);
-}
-
-// 比较 tick 和 led_state，失败时记录时间、期望值和实际值
-void check_outputs() {
-    if (!reset_seen) return;  // 第一次有效复位上升沿之前不验收
-
-    const bool act_tick = dut->rootp->top__DOT__tick;
-    const bool act_led = !dut->led_n;  // 引脚低电平点亮，换算回逻辑状态
-
-    if (act_tick != ref_tick_r) {
-        ++error_count;
-        std::printf("[time=%lu] ERROR tick: expected=%u actual=%u\n",
-                    static_cast<unsigned long>(sim_time),
-                    static_cast<unsigned>(ref_tick_r),
-                    static_cast<unsigned>(act_tick));
-    }
-    if (act_led != ref_led) {
-        ++error_count;
-        std::printf("[time=%lu] ERROR led_state: expected=%u actual=%u\n",
-                    static_cast<unsigned long>(sim_time),
-                    static_cast<unsigned>(ref_led),
-                    static_cast<unsigned>(act_led));
+// 推进 n 个时钟周期（每周期含一个上升沿）
+static void tick(uint64_t n = 1)
+{
+    for (uint64_t i = 0; i < n; ++i)
+    {
+        dut->clk = 0;
+        dut->eval();
+        if (tfp)
+            tfp->dump(sim_time);
+        ++sim_time;
+        dut->clk = 1;
+        dut->eval();
+        if (tfp)
+            tfp->dump(sim_time);
+        ++sim_time;
     }
 }
 
-// 推进一个完整时钟周期，并在规定位置调用检查
-void step(bool rst_value) {
-    // 1. clk=0，设置 rst（端口为低电平有效的 rst_n），推进时间、eval()、dump()
-    dut->clk = 0;
-    dut->rst_n = !rst_value;
-    ++sim_time;
-    dut->eval();
-    dump();
-
-    // 2. 上升沿前保存本次复位输入
-    rst_sample = rst_value;
-
-    // 3. 推进时间，令 clk=1，eval()；更新参考模型，记录波形并比较
-    ++sim_time;
-    dut->clk = 1;
-    dut->eval();
-
-    // 仿真专用 C++：仅在主时钟上升沿更新
-    if (rst_sample) {
-        elapsed = 0;
-        ref_led = false;
-        ref_tick_r = false;
-        reset_seen = true;
-    } else {
-        if (ref_tick_r) ref_led = !ref_led;  // top 在 tick 为高的沿翻转
-        ref_tick_r = (elapsed == ref_div - 1u);  // tick 是寄存器输出
-        elapsed = (elapsed == ref_div - 1u) ? 0 : elapsed + 1;
+static void check(bool ok, const char *fmt, ...)
+{
+    char buf[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (ok)
+    {
+        printf("PASS: %s\n", buf);
     }
-
-    dump();
-    check_outputs();
-
-    // 4. 推进时间，令 clk=0，eval()、dump()，再次比较
-    ++sim_time;
-    dut->clk = 0;
-    dut->eval();
-    dump();
-    check_outputs();
+    else
+    {
+        printf("FAIL: %s\n", buf);
+        ++err_cnt;
+    }
 }
 
-}  // namespace
+static uint8_t rot_r(uint8_t b) { return (b >> 1) | (b << 7); } // 循环右移
+static uint8_t rot_l(uint8_t b) { return (b << 1) | (b >> 7); } // 循环左移
+static uint8_t led_of(uint8_t bit) { return (uint8_t)~bit; }    // led_stream = ~bit_stream
 
-int main(int argc, char** argv) {
+// 完整按一次键（低电平有效）：
+// 按住 DEBOUNCE+SETTLE 拍让消抖采信“按下”，松开后同等时长让稳定电平回到
+// “未按下”，保证下一次按键还能产生新的下降沿脉冲。
+static void press(bool pause_key)
+{
+    if (pause_key)
+        dut->pause_switch = 0;
+    else
+        dut->stream_switch = 0;
+    tick(DEBOUNCE + SETTLE);
+    if (pause_key)
+        dut->pause_switch = 1;
+    else
+        dut->stream_switch = 1;
+    tick(DEBOUNCE + SETTLE);
+}
+
+// 校验连续 count 次移位：
+//   第 1 次：cnt 相位未知，逐周期等待，div 拍内必翻转一次（否则方向/运行状态错误）；
+//   之后  ：周期已知，先走 div-1 拍确认不提前翻转，再走 1 拍确认按时翻转。
+static void verify_shift(uint8_t &bit, bool left, uint64_t div, int count, const char *tag)
+{
+    const char *dir = left ? "左移" : "右移";
+    for (int k = 0; k < count; ++k)
+    {
+        const uint8_t expect = left ? rot_l(bit) : rot_r(bit);
+        if (k == 0)
+        {
+            bool found = false;
+            for (uint64_t i = 0; i < div; ++i)
+            {
+                tick();
+                if (dut->led_stream == led_of(expect))
+                {
+                    found = true;
+                    break;
+                }
+            }
+            check(found, "%s：%s 第 1 次翻转应在 %llu 拍内出现且值为 0x%02X (实测 led=0x%02X)", tag,
+                  dir, (unsigned long long)div, led_of(expect), dut->led_stream);
+            if (!found)
+            {
+                bit = (uint8_t)~dut->led_stream; // 重新对齐后继续后续阶段
+                return;
+            }
+        }
+        else
+        {
+            tick(div - 1);
+            check(dut->led_stream == led_of(bit),
+                  "%s：%s 第 %d 次翻转前应维持 0x%02X 共 %llu 拍 (实测 led=0x%02X)", tag, dir, k + 1,
+                  led_of(bit), (unsigned long long)(div - 1), dut->led_stream);
+            tick();
+            check(dut->led_stream == led_of(expect),
+                  "%s：%s 第 %d 次翻转应准时变为 0x%02X (实测 led=0x%02X)", tag, dir, k + 1,
+                  led_of(expect), dut->led_stream);
+        }
+        bit = expect;
+    }
+    printf("PASS: %s（%s x%d 完成）\n", tag, dir, count);
+}
+
+int main(int argc, char **argv)
+{
     Verilated::commandArgs(argc, argv);
-
-    // 用法：Vtop_<DIV> [div]，div 需与构建时的 -GDIV_FREQ 一致
-    if (argc > 1) {
-        ref_div = static_cast<std::uint32_t>(std::strtoul(argv[1], nullptr, 10));
-    }
-    if (ref_div < 2) {
-        std::fprintf(stderr, "invalid div %u (must be >= 2)\n", ref_div);
-        return 1;
-    }
-    std::printf("simulating with DIV_FREQ=%u\n", ref_div);
+    const uint64_t div = (argc > 1) ? strtoull(argv[1], nullptr, 10) : 6000000;
+    printf("==== 流水灯仿真开始：DIV_FREQ=%llu ====\n", (unsigned long long)div);
 
     dut = new Vtop;
-    Verilated::traceEverOn(true);
-    tfp = new VerilatedVcdC;
-    dut->trace(tfp, 99);
-    tfp->open("wave.vcd");
 
-    // 上电默认初值阶段：复位尚未生效，此阶段不验收
-    for (int i = 0; i < 4; ++i) step(false);
-
-    // 有效复位若干拍
-    for (int i = 0; i < 5; ++i) step(true);
-
-    // 释放复位，运行两个完整的 LED 翻转周期
-    // 每个 step 推进 3 个时间单位，第一次翻转约在释放后 ref_div 拍
-    const vluint64_t toggle_at = sim_time + 3ull * ref_div;
-    toggle_window_begin = toggle_at > 300 ? toggle_at - 300 : 0;
-    toggle_window_end = toggle_at + 300;
-    const std::uint64_t run_cycles = 2ull * ref_div + 100u;
-    for (std::uint64_t i = 0; i < run_cycles; ++i) step(false);
-
-    tfp->close();
-
-    if (error_count == 0) {
-        std::printf("TEST PASSED: tick and led_state matched reference model "
-                    "for %llu cycles after reset\n",
-                    static_cast<unsigned long long>(run_cycles));
-    } else {
-        std::printf("TEST FAILED: %llu mismatch(es)\n",
-                    static_cast<unsigned long long>(error_count));
+    // DIV 很大时仿真周期数巨大，关闭 VCD 以免生成超大波形文件
+    if (div <= 100000)
+    {
+        Verilated::traceEverOn(true);
+        tfp = new VerilatedVcdC;
+        dut->trace(tfp, 99);
+        tfp->open("wave.vcd");
     }
 
+    dut->clk = 0;
+    dut->stream_switch = 1; // 按键低电平有效，未按下为高
+    dut->pause_switch = 1;
+    dut->eval();
+    if (tfp)
+        tfp->dump(sim_time);
+    ++sim_time;
+
+    // ---------- 0. 初始状态 ----------
+    check(dut->led_stream == 0xFE, "初始 led_stream=0x%02X, 应为 0xFE (bit_stream=0x01, 低电平点亮)",
+          dut->led_stream);
+
+    // 等消抖稳定电平收敛到“未按下”(stable=1)，此后按键才能产生下降沿脉冲
+    tick(DEBOUNCE + SETTLE);
+
+    // ---------- 1. 右移流水 x8（绕一整圈回到起点） ----------
+    uint8_t bit = (uint8_t)~dut->led_stream; // 与 DUT 当前位置对齐
+    const uint8_t start = bit;
+    verify_shift(bit, false, div, 8, "阶段1右移流水");
+    check(bit == start, "右移 8 次后回到起点 0x%02X (当前 0x%02X)", start, bit);
+
+    // ---------- 2. 暂停：LED 必须完全冻结 ----------
+    press(true);
+    {
+        const uint8_t frozen = dut->led_stream;
+        bool still = true;
+        for (uint64_t i = 0; i < 8 * div; ++i)
+        {
+            tick();
+            if (dut->led_stream != frozen)
+                still = false;
+        }
+        check(still, "暂停后 LED 冻结在 0x%02X (持续 %llu 拍无变化)", frozen,
+              (unsigned long long)(8 * div));
+    }
+
+    // ---------- 3. 再按暂停：恢复右移 ----------
+    press(true);
+    bit = (uint8_t)~dut->led_stream;
+    verify_shift(bit, false, div, 4, "阶段3恢复后右移");
+
+    // ---------- 4. 换向：改左移 ----------
+    press(false);
+    bit = (uint8_t)~dut->led_stream;
+    verify_shift(bit, true, div, 4, "阶段4换向后左移");
+
+    // ---------- 5. 再换向：恢复右移 ----------
+    press(false);
+    bit = (uint8_t)~dut->led_stream;
+    verify_shift(bit, false, div, 4, "阶段5再次换向后右移");
+
     dut->final();
-    delete tfp;
+    if (tfp)
+    {
+        tfp->close();
+        delete tfp;
+    }
     delete dut;
-    return error_count == 0 ? 0 : 1;
+
+    if (err_cnt == 0)
+    {
+        printf("==== 仿真结束：共 %llu 拍，全部测试通过 (DIV_FREQ=%llu) ====\n",
+               (unsigned long long)(sim_time / 2), (unsigned long long)div);
+        return 0;
+    }
+    printf("==== 仿真结束：%d 项检查失败 (DIV_FREQ=%llu) ====\n", err_cnt, (unsigned long long)div);
+    return 1;
 }

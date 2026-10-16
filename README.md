@@ -1,65 +1,80 @@
-1. LED灯采用PMOD板与开发板PMOD2接口连接，具体连接关系为：
-led_stream[0] 45
-led_stream[1] 43
-led_stream[2] 38
-led_stream[3] 36
-led_stream[4] 46
-led_stream[5] 44
-led_stream[6] 42
-led_stream[7] 37
-按钮开关使用一个8按钮开关模组，K7是流水灯换向，连接到34端口，K8是流水灯暂停/恢复，连接到31端口.
-按钮开关模组的VCC端口连接到开发板的3.3V端口，由开发板供电，GND端口与开发板的GND端口连接，共地.
-未按下按钮时的高电平，是由开发板的3.3V提供的.
+1. 流水灯仿真记录.
+==== 流水灯仿真开始：DIV_FREQ=6000000 ====
+PASS: 初始 led_stream=0xFE, 应为 0xFE (bit_stream=0x01, 低电平点亮)
+PASS: 阶段1右移流水：右移 第 1 次翻转应在 6000000 拍内出现且值为 0x7F (实测 led=0x7F)
+PASS: 阶段1右移流水：右移 第 2 次翻转前应维持 0x7F 共 5999999 拍 (实测 led=0x7F)
+PASS: 阶段1右移流水：右移 第 2 次翻转应准时变为 0xBF (实测 led=0xBF)
+PASS: 阶段1右移流水：右移 第 3 次翻转前应维持 0xBF 共 5999999 拍 (实测 led=0xBF)
+PASS: 阶段1右移流水：右移 第 3 次翻转应准时变为 0xDF (实测 led=0xDF)
+PASS: 阶段1右移流水：右移 第 4 次翻转前应维持 0xDF 共 5999999 拍 (实测 led=0xDF)
+PASS: 阶段1右移流水：右移 第 4 次翻转应准时变为 0xEF (实测 led=0xEF)
+PASS: 阶段1右移流水：右移 第 5 次翻转前应维持 0xEF 共 5999999 拍 (实测 led=0xEF)
+PASS: 阶段1右移流水：右移 第 5 次翻转应准时变为 0xF7 (实测 led=0xF7)
+PASS: 阶段1右移流水：右移 第 6 次翻转前应维持 0xF7 共 5999999 拍 (实测 led=0xF7)
+PASS: 阶段1右移流水：右移 第 6 次翻转应准时变为 0xFB (实测 led=0xFB)
+PASS: 阶段1右移流水：右移 第 7 次翻转前应维持 0xFB 共 5999999 拍 (实测 led=0xFB)
+PASS: 阶段1右移流水：右移 第 7 次翻转应准时变为 0xFD (实测 led=0xFD)
+PASS: 阶段1右移流水：右移 第 8 次翻转前应维持 0xFD 共 5999999 拍 (实测 led=0xFD)
+PASS: 阶段1右移流水：右移 第 8 次翻转应准时变为 0xFE (实测 led=0xFE)
+PASS: 阶段1右移流水（右移 x8 完成）
+PASS: 右移 8 次后回到起点 0x01 (当前 0x01)
+PASS: 暂停后 LED 冻结在 0xFE (持续 48000000 拍无变化)
+PASS: 阶段3恢复后右移：右移 第 1 次翻转应在 6000000 拍内出现且值为 0x7F (实测 led=0x7F)
+PASS: 阶段3恢复后右移：右移 第 2 次翻转前应维持 0x7F 共 5999999 拍 (实测 led=0x7F)
+PASS: 阶段3恢复后右移：右移 第 2 次翻转应准时变为 0xBF (实测 led=0xBF)
+PASS: 阶段3恢复后右移：右移 第 3 次翻转前应维持 0xBF 共 5999999 拍 (实测 led=0xBF)
+PASS: 阶段3恢复后右移：右移 第 3 次翻转应准时变为 0xDF (实测 led=0xDF)
+PASS: 阶段3恢复后右移：右移 第 4 次翻转前应维持 0xDF 共 5999999 拍 (实测 led=0xDF)
+PASS: 阶段3恢复后右移：右移 第 4 次翻转应准时变为 0xEF (实测 led=0xEF)
+PASS: 阶段3恢复后右移（右移 x4 完成）
+PASS: 阶段4换向后左移：左移 第 1 次翻转应在 6000000 拍内出现且值为 0xDF (实测 led=0xDF)
+PASS: 阶段4换向后左移：左移 第 2 次翻转前应维持 0xDF 共 5999999 拍 (实测 led=0xDF)
+PASS: 阶段4换向后左移：左移 第 2 次翻转应准时变为 0xBF (实测 led=0xBF)
+PASS: 阶段4换向后左移：左移 第 3 次翻转前应维持 0xBF 共 5999999 拍 (实测 led=0xBF)
+PASS: 阶段4换向后左移：左移 第 3 次翻转应准时变为 0x7F (实测 led=0x7F)
+PASS: 阶段4换向后左移：左移 第 4 次翻转前应维持 0x7F 共 5999999 拍 (实测 led=0x7F)
+PASS: 阶段4换向后左移：左移 第 4 次翻转应准时变为 0xFE (实测 led=0xFE)
+PASS: 阶段4换向后左移（左移 x4 完成）
+PASS: 阶段5再次换向后右移：右移 第 1 次翻转应在 6000000 拍内出现且值为 0x7F (实测 led=0x7F)
+PASS: 阶段5再次换向后右移：右移 第 2 次翻转前应维持 0x7F 共 5999999 拍 (实测 led=0x7F)
+PASS: 阶段5再次换向后右移：右移 第 2 次翻转应准时变为 0xBF (实测 led=0xBF)
+PASS: 阶段5再次换向后右移：右移 第 3 次翻转前应维持 0xBF 共 5999999 拍 (实测 led=0xBF)
+PASS: 阶段5再次换向后右移：右移 第 3 次翻转应准时变为 0xDF (实测 led=0xDF)
+PASS: 阶段5再次换向后右移：右移 第 4 次翻转前应维持 0xDF 共 5999999 拍 (实测 led=0xDF)
+PASS: 阶段5再次换向后右移：右移 第 4 次翻转应准时变为 0xEF (实测 led=0xEF)
+PASS: 阶段5再次换向后右移（右移 x4 完成）
+==== 仿真结束：共 168240100 拍，全部测试通过 (DIV_FREQ=6000000) ====
 
-2. 当前构建命令是make all，实际执行的是
-nextpnr-ice40 \
-        --up5k \
-        --package sg48 \
-        --json build/top.json \
-        --pcf constraints/icesugar.pcf \
-        --asc build/top.asc \
-        --freq 12 \
-        --log build/nextpnr.log
+2. 同步模块仿真记录，新增make ssim仿真构建.
+==== sync_bit 单元测试开始 ====
+PASS: a: 上电初始 dout_sync=1, 期望 1(未按下)
+PASS: t=6   a: 输入持续为高：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=17  a: 输入持续为高：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=28  a: 输入持续为高：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=39  b: 拉低后第1拍(输出应仍为1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=50  b: 拉低后第2拍(输出应变0)：上升沿后 dout_sync=0, 期望(上一拍采样值)=0
+PASS: t=61  b: 保持低电平(输出保持0)：上升沿后 dout_sync=0, 期望(上一拍采样值)=0
+PASS: t=72  b: 保持低电平(输出保持0)：上升沿后 dout_sync=0, 期望(上一拍采样值)=0
+PASS: t=83  c: 拉高后第1拍(输出应仍为0)：上升沿后 dout_sync=0, 期望(上一拍采样值)=0
+PASS: t=94  c: 拉高后第2拍(输出应变1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=105 c: 保持高电平(输出保持1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=116 c: 保持高电平(输出保持1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=127 d: 高电平期间拉低：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=138 d: 保持低(输出变0)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=149 d: 低电平早期拉高：上升沿后 dout_sync=0, 期望(上一拍采样值)=0
+PASS: t=160 d: 保持高(输出变1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=171 d: 低电平中期拉低：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=182 d: 保持低(输出变0)：上升沿后 dout_sync=0, 期望(上一拍采样值)=0
+PASS: t=193 d: 紧挨上升沿拉高：上升沿后 dout_sync=0, 期望(上一拍采样值)=0
+PASS: t=204 d: 保持高(输出变1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=215 e: 脉冲落在两沿之间(输出应保持1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=226 e: 脉冲后第2拍(输出仍应1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=237 e: 脉冲后第3拍(输出仍应1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=248 f: 脉冲跨过采样沿(本拍输出仍1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=259 f: 脉冲出现在输出(应变0)：上升沿后 dout_sync=0, 期望(上一拍采样值)=0
+PASS: t=270 f: 脉冲离开输出(应回1)：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+PASS: t=281 f: 输出保持高：上升沿后 dout_sync=1, 期望(上一拍采样值)=1
+==== sync_bit 单元测试结束：共 286 时间步，全部通过 ====
 
-仿真命令是make vsim，实际执行的是
-verilator \
-        --cc \
-        --exe \
-        --build \
-        -j 0 \
-        -Wall \
-        --top-module top \
-        --trace \
-        --Mdir build/verilator \
-        -GDIV_FREQ=6000000 \
-        -o Vtop_6000000 \
-        /home/cirno/code/ice40up5k-90days/rtl/debounce.v /home/cirno/code/ice40up5k-90days/rtl/top.v \
-        /home/cirno/code/ice40up5k-90days/sim/verilator_main.cpp
-
-烧录命令是make prog，实际执行的是icesprog build/top.bin.
-
-3. 资源占用情况:
-Printing statistics.
-   Number of wires:                 60
-   Number of wire bits:            312
-   Number of public wires:          60
-   Number of public wire bits:     312
-   Number of memories:               0
-   Number of memory bits:            0
-   Number of processes:              0
-   Number of cells:                229
-     SB_CARRY                       51
-     SB_DFF                          6
-     SB_DFFE                        12
-     SB_DFFESR                      23
-     SB_DFFSR                       34
-     SB_LUT4                       103
-
-12MHz时序结果:
-Info: Max frequency for clock 'clk$SB_IO_IN_$glb_clk': 52.70 MHz (PASS at 12.00 MHz)
-Info: Max delay <async>                       -> posedge clk$SB_IO_IN_$glb_clk: 3.97 ns
-Info: Max delay posedge clk$SB_IO_IN_$glb_clk -> <async>                      : 11.62 ns
-
-4. FPGA实际运行情况，可清晰的看到每0.5秒LED灯位移一格，K7按键可正常换向，K8按键可正常暂停/恢复.
-
-5. 计划已改为90个commit、没有截止日期.
+3. 按钮变化与主时钟没有固定相位关系；如果变化落在触发器的建立、保持时间窗口附近，可能引发亚稳态。两级同步给第一级更多恢复时间，从而降低亚稳态传播到后续逻辑的概率，不能保证风险为零.
+两级同步也不等于消抖，更不保证捕获任意窄脉冲.

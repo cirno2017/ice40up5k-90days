@@ -19,13 +19,14 @@ module debounce #(
   localparam integer CNTWIDTH = $clog2(CNT_MAX + 1);
 
   // ---------- 第1步：跨时钟域同步（打两拍，降低亚稳态传播风险）----------
-  // 按键未按下为高，初值取“未按下”电平，避免上电后凭空产生按下事件
-  logic sync1 = 1'b1;
-  logic sync2 = 1'b1;
-  always_ff @(posedge clk) begin
-    sync1 <= btn;  // 第1级：先“接住”异步输入
-    sync2 <= sync1;  // 第2级：同步到 clk 时钟域
-  end
+  // 例化 sync_bit 同步器（其内部即为两级寄存器，此处不再额外串联）。
+  // 按键未按下为高，sync_bit 两级初值均为 1，上电后不会凭空产生按下事件
+  logic sync2;
+  sync_bit u_sync (
+      .clk      (clk),
+      .din_async(btn),   // 第1级：先“接住”异步输入
+      .dout_sync(sync2)  // 第2级：同步到 clk 时钟域，后续逻辑只用这一级
+  );
 
   // ---------- 第2步：消抖计数 ----------
   // 与稳定电平一致   -> 计数器清零；

@@ -182,6 +182,33 @@ vsim: $(VERILATOR_BIN)
 
 
 # ============================================================
+# sync_bit 单元测试（独立小型 Verilator C++ 仿真）
+#   独立 --Mdir，避免与 top 的模型文件互相覆盖
+# ============================================================
+
+SYNC_DIR := $(BUILD_DIR)/verilator_sync
+SYNC_BIN := $(SYNC_DIR)/Vsync_bit
+SYNC_CPP := $(abspath sim/sync_bit_main.cpp)
+
+$(SYNC_BIN): $(RTL_DIR)/sync_bit.v sim/sync_bit_main.cpp | $(BUILD_DIR)
+	verilator \
+		--cc \
+		--exe \
+		--build \
+		-j 0 \
+		-Wall \
+		--top-module sync_bit \
+		--Mdir $(SYNC_DIR) \
+		$(abspath $(RTL_DIR)/sync_bit.v) \
+		$(SYNC_CPP)
+
+
+.PHONY: ssim
+ssim: $(SYNC_BIN)
+	$(SYNC_BIN)
+
+
+# ============================================================
 # Verilator waveform
 # ============================================================
 

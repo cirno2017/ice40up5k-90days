@@ -209,6 +209,37 @@ ssim: $(SYNC_BIN)
 
 
 # ============================================================
+# edge_detect 单元测试（sync_bit -> edge_detect 链）
+#   仿真顶层 sim/sync_edge_top.v 只在仿真中使用，不参与 FPGA 综合；
+#   独立 --Mdir，避免与其他模型文件互相覆盖
+# ============================================================
+
+EDGE_DIR := $(BUILD_DIR)/verilator_edge
+EDGE_BIN := $(EDGE_DIR)/Vsync_edge_top
+EDGE_SIM_TOP := $(abspath sim/sync_edge_top.v)
+EDGE_CPP := $(abspath sim/edge_detect_main.cpp)
+
+$(EDGE_BIN): $(RTL_DIR)/sync_bit.v $(RTL_DIR)/edge_detect.v sim/sync_edge_top.v sim/edge_detect_main.cpp | $(BUILD_DIR)
+	verilator \
+		--cc \
+		--exe \
+		--build \
+		-j 0 \
+		-Wall \
+		--top-module sync_edge_top \
+		--Mdir $(EDGE_DIR) \
+		$(abspath $(RTL_DIR)/sync_bit.v) \
+		$(abspath $(RTL_DIR)/edge_detect.v) \
+		$(EDGE_SIM_TOP) \
+		$(EDGE_CPP)
+
+
+.PHONY: esim
+esim: $(EDGE_BIN)
+	$(EDGE_BIN)
+
+
+# ============================================================
 # Verilator waveform
 # ============================================================
 

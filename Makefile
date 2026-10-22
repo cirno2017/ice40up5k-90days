@@ -240,6 +240,54 @@ esim: $(EDGE_BIN)
 
 
 # ============================================================
+# debounce 单元测试（独立小型 Verilator C++ 仿真）
+#   两个门限各建一个模型，二进制名带 N，切换参数时自动重建：
+#     CNT_MAX=3 -> N=4（主测试）    CNT_MAX=0 -> N=1（边界）
+# ============================================================
+
+DEB4_DIR := $(BUILD_DIR)/verilator_debounce_n4
+DEB4_BIN := $(DEB4_DIR)/Vdebounce_n4
+DEB1_DIR := $(BUILD_DIR)/verilator_debounce_n1
+DEB1_BIN := $(DEB1_DIR)/Vdebounce_n1
+DEB_RTL  := $(abspath $(RTL_DIR)/debounce.v) $(abspath $(RTL_DIR)/sync_bit.v)
+DEB_CPP  := $(abspath sim/debounce_main.cpp)
+
+$(DEB4_BIN): $(RTL_DIR)/debounce.v $(RTL_DIR)/sync_bit.v sim/debounce_main.cpp | $(BUILD_DIR)
+	verilator \
+		--cc \
+		--exe \
+		--build \
+		-j 0 \
+		-Wall \
+		--top-module debounce \
+		--Mdir $(DEB4_DIR) \
+		-GCNT_MAX=3 \
+		-o Vdebounce_n4 \
+		$(DEB_RTL) \
+		$(DEB_CPP)
+
+$(DEB1_BIN): $(RTL_DIR)/debounce.v $(RTL_DIR)/sync_bit.v sim/debounce_main.cpp | $(BUILD_DIR)
+	verilator \
+		--cc \
+		--exe \
+		--build \
+		-j 0 \
+		-Wall \
+		--top-module debounce \
+		--Mdir $(DEB1_DIR) \
+		-GCNT_MAX=0 \
+		-o Vdebounce_n1 \
+		$(DEB_RTL) \
+		$(DEB_CPP)
+
+
+.PHONY: dsim
+dsim: $(DEB4_BIN) $(DEB1_BIN)
+	$(DEB4_BIN) 4
+	$(DEB1_BIN) 1
+
+
+# ============================================================
 # Verilator waveform
 # ============================================================
 

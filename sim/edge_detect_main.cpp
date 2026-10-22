@@ -115,8 +115,8 @@ static void posedge(const char *tag)
           (unsigned long long)t, tag, dut->dout_sync, dut->rise_pulse, dut->fall_pulse, exp_sync2,
           exp_rise, exp_fall);
 
-    rise_cnt += exp_rise;
-    fall_cnt += exp_fall;
+    rise_cnt += dut->rise_pulse;
+    fall_cnt += dut->fall_pulse;
 
     m_sync1 = s_cur;
     m_sync2 = exp_sync2;
@@ -214,9 +214,9 @@ int main(int argc, char **argv)
     uint8_t din = 1; // 当前输入电平(场景 c 结束后为高)
     for (int i = 0; i < 30; ++i)
     {
-        const uint8_t v = rand() & 1;        // 目标电平
-        const int where = rand() % 10;       // 0-4: 低电平第 where 步; 5-9: 高电平第 where-5 步
-        const int hold = 4 + rand() % 3;     // 变化后保持 4~6 拍
+        const uint8_t v = rand() & 1;    // 目标电平
+        const int where = rand() % 10;   // 0-4: 低电平第 where 步; 5-9: 高电平第 where-5 步
+        const int hold = 4 + rand() % 3; // 变化后保持 4~6 拍
         if (v != din)
         {
             if (v)

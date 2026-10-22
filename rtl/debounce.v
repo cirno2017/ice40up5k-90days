@@ -16,7 +16,8 @@ module debounce #(
     output logic fall_pulse  // 按下事件脉冲，持续 1 个 clk
 );
 
-  localparam integer CNTWIDTH = $clog2(CNT_MAX + 1);
+  // 计数器位宽：CNT_MAX=0 时 $clog2(CNT_MAX+1)=0，下限钳位为 1
+  localparam integer CNTWIDTH = (CNT_MAX > 0) ? $clog2(CNT_MAX + 1) : 1;
 
   // ---------- 第1步：跨时钟域同步（打两拍，降低亚稳态传播风险）----------
   // 例化 sync_bit 同步器（其内部即为两级寄存器，此处不再额外串联）。
